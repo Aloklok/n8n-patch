@@ -1,0 +1,42 @@
+name: Build and Push Custom n8n Image
+
+on:
+  workflow_dispatch: # 允许手动触发
+  push:              # 监听推送事件
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'  # 只有当 Dockerfile 变动时才自动构建
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Get Timestamp
+        id: vars
+        run: |
+          echo "timestamp=$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # 标签说明：
+          # latest: 始终指向最新构建
+          # 1.116.2: 锁定版本号（建议与 Dockerfile 中的基础镜像版本一致）
+          # build-xxx: 方便回溯的带时间戳版本
+          tags: |
+            aloklok/n8n-custom:latest
+            aloklok/n8n-custom:1.116.2
+            aloklok/n8n-custom:build-${{ steps.vars.outputs.timestamp }}
