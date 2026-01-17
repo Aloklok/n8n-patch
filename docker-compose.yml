@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  n8n:
+    # 使用你刚刚构建成功的自定义镜像
+    image: aloklok/n8n-custom:1.116.2
+    container_name: n8n
+    restart: always
+    networks:
+      - n8n_net
+    volumes:
+      # 宿主机数据持久化路径
+      - /home/chronos/user/n8n-data:/home/node/.n8n
+    environment:
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_HOST=n8n.alok-rss.top
+      - WEBHOOK_URL=https://n8n.alok-rss.top/
+      # 核心：允许调用你打包进去的插件
+      - NODE_FUNCTION_ALLOW_EXTERNAL=html-to-text
+      - N8N_SECURE_COOKIE=true
+      - DB_SQLITE_POOL_SIZE=1
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=1000
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false
+      - N8N_DIAGNOSTICS_ENABLED=false
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - n8n_net
+    volumes:
+      # 挂载从 GitHub 下载的配置文件
+      - ./n8n.conf:/etc/nginx/conf.d/n8n.conf:ro
+      # 挂载宿主机上的阿里云证书（由 User-data 生成）
+      - /etc/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - n8n
+
+networks:
+  n8n_net:
+    driver: bridge
