@@ -39,7 +39,7 @@ services:
       - n8n_net
     volumes:
       # 挂载从 GitHub 下载的配置文件
-      - ./n8n.conf:/etc/nginx/conf.d/n8n.conf:ro
+      - /home/chronos/user/n8n.conf:/etc/nginx/conf.d/n8n.conf:ro
       # 挂载宿主机上的阿里云证书（由 User-data 生成）
       - /etc/nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
