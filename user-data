@@ -1,0 +1,65 @@
+#cloud-config
+
+write_files:
+  # ==========================================
+  # 1. 最终修正版部署脚本 (适配 Compose V1 语法)
+  # ==========================================
+  - path: /home/chronos/user/deploy.sh
+    permissions: "0755"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      WORKDIR="/home/chronos/user"
+      mkdir -p $WORKDIR /etc/nginx/ssl
+      cd $WORKDIR
+
+      echo "--- 1. 获取 SSL 秘密 ---"
+      # 增加检查：如果获取内容为空，后续 Nginx 会崩，所以这里要确保拿到了东西
+      curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/ssl-cert" -o /etc/nginx/ssl/cert.pem
+      curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/ssl-key" -o /etc/nginx/ssl/key.pem
+
+      if [ ! -s /etc/nginx/ssl/cert.pem ]; then echo "ERROR: SSL Cert is empty!"; exit 1; fi
+
+      echo "--- 2. 拉取 GitHub 配置 ---"
+      curl -sL https://raw.githubusercontent.com/Aloklok/n8n-patch/main/docker-compose.yml -o docker-compose.yml
+      curl -sL https://raw.githubusercontent.com/Aloklok/n8n-patch/main/n8n.conf -o n8n.conf
+
+      if [ ! -s docker-compose.yml ]; then echo "ERROR: docker-compose.yml download failed!"; exit 1; fi
+
+      echo "--- 3. 运行 Docker Compose ---"
+      # 【核心修复】：删除 --pull 后的 always。在 V1 中 --pull 就代表总是尝试拉取。
+      docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v "$WORKDIR:$WORKDIR" \
+          -v /etc/nginx/ssl:/etc/nginx/ssl:ro \
+          -w "$WORKDIR" \
+          docker/compose:1.29.2 up -d --pull
+
+      echo "--- 4. 清理 ---"
+      docker image prune -f
+      echo "--- 部署任务完成 ---"
+
+  # ==========================================
+  # 2. Systemd 引导
+  # ==========================================
+  - path: /etc/systemd/system/n8n-stack.service
+    content: |
+      [Unit]
+      Description=n8n GitOps Stack Loader
+      After=docker.service network-online.target
+      Requires=docker.service network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/bash /home/chronos/user/deploy.sh
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - mkdir -p /home/chronos/user/n8n-data
+  - chown -R 1000:1000 /home/chronos/user/n8n-data
+  - systemctl daemon-reload
+  - systemctl enable n8n-stack.service
+  - systemctl start n8n-stack.service
